@@ -25,12 +25,16 @@ class CashFlowStatement(BaseModel):
     Attributes:
         depr_amort: Depreciation and amortization.
         capex: Capital expenditures.
-        delta_nwc: Change in net working capital.
+        working_capital_changes: Operating asset and liability changes.
     """
 
     depr_amort: float
     capex: float
-    delta_nwc: float
+    working_capital_changes: list[float]
+
+    @property
+    def delta_nwc(self) -> float:
+        return sum(self.working_capital_changes)
 
 
 class BalanceSheet(BaseModel):
