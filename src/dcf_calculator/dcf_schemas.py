@@ -62,8 +62,6 @@ class AnnualFinancials(BaseModel):
     Attributes:
         ticker: Stock ticker symbol.
         fiscal_year: Reporting year.
-        dollars_unit: Currency unit across statements (e.g., 'millions').
-        shares_unit: Share count unit (e.g., 'shares', 'millions').
         income_statement: Income statement metrics.
         cash_flow_statement: Cash flow statement metrics.
         balance_sheet: Balance sheet metrics.
@@ -71,60 +69,9 @@ class AnnualFinancials(BaseModel):
 
     ticker: str
     fiscal_year: int
-    dollars_unit: str
-    shares_unit: str
     income_statement: IncomeStatement
     cash_flow_statement: CashFlowStatement
     balance_sheet: BalanceSheet
-
-    @model_validator(mode="after")
-    def normalize_to_base_units(self):
-        dollar_multiplier = 1.0
-        unit = self.dollars_unit.lower().strip()
-        if unit in ("millions", "million"):
-            dollar_multiplier = 1_000_000.0
-        elif unit in ("thousands", "thousand"):
-            dollar_multiplier = 1_000.0
-        elif unit in ("billions", "billion"):
-            dollar_multiplier = 1_000_000_000.0
-
-        share_multiplier = 1.0
-        s_unit = self.shares_unit.lower().strip()
-        if s_unit in ("thousands", "thousand"):
-            share_multiplier = 1_000.0
-        elif s_unit in ("millions", "million"):
-            share_multiplier = 1_000_000.0
-        elif s_unit in ("billions", "billion"):
-            share_multiplier = 1_000_000_000.0
-
-        # Scale dollar fields across statements to raw dollars ($1.00)
-        if dollar_multiplier != 1.0:
-            # Income Statement
-            self.income_statement.revenue *= dollar_multiplier
-            self.income_statement.ebit *= dollar_multiplier
-            self.income_statement.income_tax_expense *= dollar_multiplier
-            self.income_statement.pre_tax_income *= dollar_multiplier
-
-            # Cash Flow Statement
-            self.cash_flow_statement.depr_amort *= dollar_multiplier
-            self.cash_flow_statement.capex *= dollar_multiplier
-            self.cash_flow_statement.delta_nwc *= dollar_multiplier
-
-            # Balance Sheet
-            self.balance_sheet.cash_equiv *= dollar_multiplier
-            self.balance_sheet.short_term_investments *= dollar_multiplier
-            self.balance_sheet.long_term_investments *= dollar_multiplier
-            self.balance_sheet.short_term_debt *= dollar_multiplier
-            self.balance_sheet.long_term_debt *= dollar_multiplier
-
-            self.dollars_unit = "ones"
-
-        # Scale share counts to raw shares (1.0)
-        if share_multiplier != 1.0:
-            self.income_statement.shares_outstanding *= share_multiplier
-            self.shares_unit = "shares"
-
-        return self
 
 
 class ValuationAssumptions(BaseModel):
