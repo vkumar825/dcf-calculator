@@ -31,13 +31,22 @@ class DiscountedCashFlow(BaseModel):
 
         return cost_of_equity
 
+    def calculate_pre_tax_cost_debt(self):
+        balance_sheet = self.get_latest_financials().balance_sheet
+        income_statement = self.get_latest_financials().income_statement
+
+        if balance_sheet.total_debt > 0:
+            return income_statement.interest_expense / balance_sheet.total_debt
+
+        return 0.0
+
     def calculate_wacc(self):
         assumptions = self.assumptions
         income_statement = self.get_latest_financials().income_statement
         balance_sheet = self.get_latest_financials().balance_sheet
 
         current_stock_price = assumptions.current_stock_price
-        cost_of_debt = assumptions.pre_tax_cost_debt
+        cost_of_debt = self.calculate_pre_tax_cost_debt()
         outstanding_shares = income_statement.shares_outstanding
         total_debt = balance_sheet.total_debt
 
@@ -60,15 +69,13 @@ class DiscountedCashFlow(BaseModel):
         income_statement = self.get_latest_financials().income_statement
         cash_flow_statement = self.get_latest_financials().cash_flow_statement
 
-        ebit = income_statement.ebit
+        cfo = cash_flow_statement.operating_cash_flow
+        capex = abs(cash_flow_statement.capex)
         effective_tax_rate = self.calculate_effective_tax_rate()
-        depr_amort = cash_flow_statement.depr_amort
-        capex = cash_flow_statement.capex
+        interest_expense = income_statement.interest_expense
 
-        # Flip sign: 10-K reports cash outflow as negative, but textbook formula subtracts delta_nwc
-        delta_nwc = -cash_flow_statement.delta_nwc
-
-        ufcf = ebit * (1 - effective_tax_rate) + depr_amort - delta_nwc - capex
+        # Deriving Unlevered Free Cash Flow from Cash Flow from Operations
+        ufcf = cfo - capex + (interest_expense * (1 - effective_tax_rate))
 
         return ufcf
 
@@ -91,12 +98,13 @@ class DiscountedCashFlow(BaseModel):
         assumptions = self.assumptions
 
         final_fcf = self.project_cash_flows()[-1]
-        perpetual_growth_rate = assumptions.perpetual_growth_rate
+        g = assumptions.perpetual_growth_rate
         wacc = self.calculate_wacc()
 
-        terminal_value = (final_fcf * (1 + perpetual_growth_rate)) / (
-            wacc - perpetual_growth_rate
-        )
+        if wacc <= g:
+            raise ValueError("WACC must be greater than perpetual growth rate (g).")
+
+        terminal_value = (final_fcf * (1 + g)) / (wacc - g)
 
         return terminal_value
 
@@ -130,10 +138,14 @@ class DiscountedCashFlow(BaseModel):
             + balance_sheet.long_term_investments
             + balance_sheet.short_term_investments
         )
-
-        total_debt = balance_sheet.total_debt
-
-        equity_value = enterprise_value + total_liquid_cash - total_debt
+        
+        equity_value = (
+            enterprise_value
+            + total_liquid_cash
+            - balance_sheet.total_debt
+            - balance_sheet.preferred_stock
+            - balance_sheet.minority_interest
+        )
 
         return equity_value
 
