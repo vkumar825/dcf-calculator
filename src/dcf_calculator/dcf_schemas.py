@@ -1,19 +1,17 @@
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, field_validator
 
 
 class IncomeStatement(BaseModel):
     """Core financial metrics from the income statement.
 
     Attributes:
-        revenue: Total revenue (top-line sales).
-        ebit: Earnings before interest and taxes.
+        interest_expense: Interest expense on debt obligations.
         income_tax_expense: Total income taxes.
         pre_tax_income: Earnings before taxes.
-        shares_outstanding: Common shares outstanding.
+        shares_outstanding: Diluted shares outstanding.
     """
 
-    revenue: float
-    ebit: float
+    interest_expense: float = 0.0
     income_tax_expense: float
     pre_tax_income: float
     shares_outstanding: float
@@ -23,18 +21,12 @@ class CashFlowStatement(BaseModel):
     """Cash flow statement metrics for free cash flow calculation.
 
     Attributes:
-        depr_amort: Depreciation and amortization.
+        operating_cash_flow: Net cash provided by operating activities (CFO).
         capex: Capital expenditures.
-        working_capital_changes: Operating asset and liability changes.
     """
 
-    depr_amort: float
+    operating_cash_flow: float
     capex: float
-    working_capital_changes: list[float]
-
-    @property
-    def delta_nwc(self) -> float:
-        return sum(self.working_capital_changes)
 
 
 class BalanceSheet(BaseModel):
@@ -46,14 +38,17 @@ class BalanceSheet(BaseModel):
         long_term_investments: Non-current marketable securities.
         short_term_debt: Short-term borrowings and current portion of debt.
         long_term_debt: Non-current debt obligations.
-        total_debt: Computed property summing short-term and long-term debt.
+        preferred_stock: Value of preferred equity shares.
+        minority_interest: Non-controlling interests in consolidated subsidiaries.
     """
 
     cash_equiv: float
-    short_term_investments: float
-    long_term_investments: float
-    short_term_debt: float
-    long_term_debt: float
+    short_term_investments: float = 0.0
+    long_term_investments: float = 0.0
+    short_term_debt: float = 0.0
+    long_term_debt: float = 0.0
+    preferred_stock: float = 0.0
+    minority_interest: float = 0.0
 
     @property
     def total_debt(self) -> float:
@@ -82,21 +77,29 @@ class ValuationAssumptions(BaseModel):
     """User-provided assumptions for DCF valuation and WACC.
 
     Attributes:
+        current_stock_price: Current share price.
         risk_free_rate: Risk-free rate of return.
         beta: Stock beta (volatility relative to market).
-        current_stock_price: Current share price.
-        pre_tax_cost_debt: Effective interest rate on debt.
+        market_risk_premium: Expected market return above risk-free rate.
         expected_growth_rate: Forecasted annual revenue growth rate.
         perpetual_growth_rate: Long-term terminal growth rate.
         fiscal_horizon: Forecast horizon in years.
-        market_risk_premium: Expected market return above risk-free rate.
     """
 
+    current_stock_price: float
     risk_free_rate: float
     beta: float
-    current_stock_price: float
-    pre_tax_cost_debt: float
+    market_risk_premium: float
     expected_growth_rate: float
     perpetual_growth_rate: float
-    fiscal_horizon: int
-    market_risk_premium: float
+    fiscal_horizon: int = 5
+
+    @field_validator(
+        "risk_free_rate",
+        "market_risk_premium",
+        "expected_growth_rate",
+        "perpetual_growth_rate",
+    )
+    @classmethod
+    def normalize_percentages(cls, value: float) -> float:
+        return value / 100 if value > 1.00 else value
