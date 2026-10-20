@@ -7,7 +7,7 @@ class DiscountedCashFlow(BaseModel):
     financials: list[AnnualFinancials]
     assumptions: ValuationAssumptions
 
-    def get_latest_financials(self):
+    def get_latest_financials(self) -> AnnualFinancials:
         return self.financials[-1]
 
     def calculate_effective_tax_rate(self) -> float:
@@ -20,7 +20,7 @@ class DiscountedCashFlow(BaseModel):
         else:
             return 0
 
-    def calculate_cost_of_equity(self):
+    def calculate_cost_of_equity(self) -> float:
         assumptions = self.assumptions
         risk_free_rate = assumptions.risk_free_rate
         beta = assumptions.beta
@@ -31,7 +31,7 @@ class DiscountedCashFlow(BaseModel):
 
         return cost_of_equity
 
-    def calculate_pre_tax_cost_debt(self):
+    def calculate_pre_tax_cost_debt(self) -> float:
         balance_sheet = self.get_latest_financials().balance_sheet
         income_statement = self.get_latest_financials().income_statement
 
@@ -40,7 +40,7 @@ class DiscountedCashFlow(BaseModel):
 
         return 0.0
 
-    def calculate_wacc(self):
+    def calculate_wacc(self) -> float:
         assumptions = self.assumptions
         income_statement = self.get_latest_financials().income_statement
         balance_sheet = self.get_latest_financials().balance_sheet
@@ -65,7 +65,7 @@ class DiscountedCashFlow(BaseModel):
 
         return wacc
 
-    def calculate_base_ufcf(self):
+    def calculate_base_ufcf(self) -> float:
         income_statement = self.get_latest_financials().income_statement
         cash_flow_statement = self.get_latest_financials().cash_flow_statement
 
@@ -79,7 +79,7 @@ class DiscountedCashFlow(BaseModel):
 
         return ufcf
 
-    def project_cash_flows(self):
+    def project_cash_flows(self) -> list[float]:
         assumptions = self.assumptions
 
         base_ufcf = self.calculate_base_ufcf()
@@ -94,7 +94,7 @@ class DiscountedCashFlow(BaseModel):
 
         return projected_cash_flows
 
-    def calculate_terminal_value(self):
+    def calculate_terminal_value(self) -> float:
         assumptions = self.assumptions
 
         final_fcf = self.project_cash_flows()[-1]
@@ -108,7 +108,7 @@ class DiscountedCashFlow(BaseModel):
 
         return terminal_value
 
-    def calculate_enterprise_value(self):
+    def calculate_enterprise_value(self) -> float:
         projected_cash_flows = self.project_cash_flows()
         wacc = self.calculate_wacc()
         terminal_value = self.calculate_terminal_value()
@@ -128,7 +128,7 @@ class DiscountedCashFlow(BaseModel):
 
         return enterprise_value
 
-    def calculate_equity_value(self):
+    def calculate_equity_value(self) -> float:
         balance_sheet = self.get_latest_financials().balance_sheet
 
         enterprise_value = self.calculate_enterprise_value()
@@ -138,7 +138,7 @@ class DiscountedCashFlow(BaseModel):
             + balance_sheet.long_term_investments
             + balance_sheet.short_term_investments
         )
-        
+
         equity_value = (
             enterprise_value
             + total_liquid_cash
@@ -149,10 +149,24 @@ class DiscountedCashFlow(BaseModel):
 
         return equity_value
 
-    def calculate_implied_share_price(self):
+    def calculate_implied_share_price(self) -> float:
         income_statement = self.get_latest_financials().income_statement
         equity_value = self.calculate_equity_value()
 
         implied_share_price = equity_value / income_statement.shares_outstanding
 
         return implied_share_price
+
+    def run_valuation(self) -> dict[str, float | list[float]]:
+        return {
+            "effective_tax_rate": self.calculate_effective_tax_rate(),
+            "cost_of_equity": self.calculate_cost_of_equity(),
+            "pre_tax_cost_of_debt": self.calculate_pre_tax_cost_debt(),
+            "wacc": self.calculate_wacc(),
+            "base_ufcf": self.calculate_base_ufcf(),
+            "projected_cash_flows": self.project_cash_flows(),
+            "terminal_value": self.calculate_terminal_value(),
+            "enterprise_value": self.calculate_enterprise_value(),
+            "equity_value": self.calculate_equity_value(),
+            "implied_share_price": self.calculate_implied_share_price(),
+        }

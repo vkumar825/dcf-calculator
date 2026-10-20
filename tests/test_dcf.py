@@ -150,3 +150,22 @@ def test_calculate_equity_value(dcf):
 
 def test_calculate_implied_share_price(dcf):
     assert dcf.calculate_implied_share_price() == pytest.approx(135.72, abs=1e-2)
+
+
+def test_run_valuation(dcf):
+    result = dcf.run_valuation()
+
+    assert result["effective_tax_rate"] == pytest.approx(0.1561, abs=1e-4)
+    assert result["cost_of_equity"] == pytest.approx(0.0946, abs=1e-4)
+    assert result["pre_tax_cost_of_debt"] == pytest.approx(0.0434, abs=1e-4)
+    assert result["wacc"] == pytest.approx(0.0931, abs=1e-4)
+    assert result["base_ufcf"] == pytest.approx(102086058608.14, abs=1e-2)
+    assert len(result["projected_cash_flows"]) == 10
+    assert result["projected_cash_flows"][0] == pytest.approx(108211222124.63, abs=1e-2)
+    assert result["projected_cash_flows"][-1] == pytest.approx(
+        182820582907.53, abs=1e-2
+    )
+    assert result["terminal_value"] == pytest.approx(2751031194964.03, abs=1e-2)
+    assert result["enterprise_value"] == pytest.approx(1994675068697.00, abs=1e-2)
+    assert result["equity_value"] == pytest.approx(2036417068697.00, abs=1e-2)
+    assert result["implied_share_price"] == pytest.approx(135.72, abs=1e-2)
