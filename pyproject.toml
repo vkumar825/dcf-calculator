@@ -1,13 +1,15 @@
 [project]
 name = "dcf-calculator"
 version = "0.1.0"
-description = "Add your description here"
+description = "Python tool to fetch SEC EDGAR 10-K financials, project free cash flows, and run DCF valuations."
 readme = "README.md"
 authors = [
     { name = "Vivek Kumar", email = "vkumar01825@gmail.com" }
 ]
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "pydantic>=2.14.1",
+]
 
 [project.scripts]
 dcf-calculator = "dcf_calculator:main"
@@ -15,3 +17,8 @@ dcf-calculator = "dcf_calculator:main"
 [build-system]
 requires = ["uv_build>=0.12.0,<0.13.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
