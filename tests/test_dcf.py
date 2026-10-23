@@ -56,31 +56,35 @@ def test_percentage_normalization(assumptions):
     assert assumptions.perpetual_growth_rate == pytest.approx(0.025)
 
 
-def test_calculate_effective_tax_rate(dcf):
+def test_calculate_effective_tax_rate(dcf, financials, assumptions):
+    # Standard effective tax rate (within 0% - 35% range)
     assert dcf.calculate_effective_tax_rate() == pytest.approx(0.1561, abs=1e-4)
 
+    # Upper bound clamping: raw tax rate > 35% (60B / 100B = 60%) clamps to 35%
+    financials[0].income_statement.income_tax_expense = 60_000_000_000
+    financials[0].income_statement.pre_tax_income = 100_000_000_000
+    assert dcf.calculate_effective_tax_rate() == pytest.approx(0.35)
 
-def test_calculate_effective_tax_rate_zero_or_negative_pre_tax_income(
-    financials, assumptions
-):
+    # Lower bound clamping: tax credit/refund (-10B / 100B = -10%) clamps to 0%
+    financials[0].income_statement.income_tax_expense = -10_000_000_000
+    assert dcf.calculate_effective_tax_rate() == pytest.approx(0.0)
+
+    # Non-positive pre-tax income: defaults to 21% US statutory tax rate
     financials[0].income_statement.pre_tax_income = -1_000_000
-    dcf_negative = DiscountedCashFlow(financials=financials, assumptions=assumptions)
-    assert dcf_negative.calculate_effective_tax_rate() == 0
+    assert dcf.calculate_effective_tax_rate() == pytest.approx(0.21)
 
 
 def test_calculate_cost_of_equity(dcf):
     assert dcf.calculate_cost_of_equity() == pytest.approx(0.0946, abs=1e-4)
 
 
-def test_calculate_pre_tax_cost_debt(dcf):
+def test_calculate_pre_tax_cost_debt(dcf, financials):
     assert dcf.calculate_pre_tax_cost_debt() == pytest.approx(0.0434, abs=1e-4)
 
-
-def test_calculate_pre_tax_cost_debt_zero_debt(financials, assumptions):
+    # Zero debt case returns 0.0
     financials[0].balance_sheet.short_term_debt = 0.0
     financials[0].balance_sheet.long_term_debt = 0.0
-    dcf_no_debt = DiscountedCashFlow(financials=financials, assumptions=assumptions)
-    assert dcf_no_debt.calculate_pre_tax_cost_debt() == 0.0
+    assert dcf.calculate_pre_tax_cost_debt() == 0.0
 
 
 def test_calculate_wacc(dcf):
@@ -112,23 +116,10 @@ def test_project_cash_flows(dcf):
 def test_calculate_terminal_value(dcf):
     assert dcf.calculate_terminal_value() == pytest.approx(2751031194964.03, abs=1e-2)
 
-
-def test_calculate_terminal_value_invalid_growth_rate(financials):
-    invalid_assumptions = ValuationAssumptions(
-        current_stock_price=235,
-        risk_free_rate=4,
-        beta=1.07,
-        market_risk_premium=5.1,
-        expected_growth_rate=6,
-        perpetual_growth_rate=15,
-        fiscal_horizon=10,
-    )
-    dcf_invalid = DiscountedCashFlow(
-        financials=financials, assumptions=invalid_assumptions
-    )
-
-    wacc = dcf_invalid.calculate_wacc()
-    g = dcf_invalid.assumptions.perpetual_growth_rate
+    # Invalid perpetual growth rate (wacc <= g) raises ValueError
+    dcf.assumptions.perpetual_growth_rate = 0.15
+    wacc = dcf.calculate_wacc()
+    g = dcf.assumptions.perpetual_growth_rate
 
     assert wacc == pytest.approx(0.0931, abs=1e-4)
     assert g == pytest.approx(0.15)
@@ -137,7 +128,7 @@ def test_calculate_terminal_value_invalid_growth_rate(financials):
     with pytest.raises(
         ValueError, match=r"WACC must be greater than perpetual growth rate \(g\)\."
     ):
-        dcf_invalid.calculate_terminal_value()
+        dcf.calculate_terminal_value()
 
 
 def test_calculate_enterprise_value(dcf):
