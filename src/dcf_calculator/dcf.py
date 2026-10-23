@@ -15,10 +15,18 @@ class DiscountedCashFlow(BaseModel):
         total_tax_expense = income_statement.income_tax_expense
         pre_tax_income = income_statement.pre_tax_income
 
+        US_FEDERAL_RATE = 0.21
+        MAX_TAX_RATE = 0.35
+
         if pre_tax_income > 0:
-            return total_tax_expense / pre_tax_income
+            raw_tax_rate = total_tax_expense / pre_tax_income
+
+            # Clamping between 0% and the maximum tax rate of 35%
+            return max(0.0, min(raw_tax_rate, MAX_TAX_RATE))
+
         else:
-            return 0
+            # Default to federal statutory rate of 21%
+            return US_FEDERAL_RATE
 
     def calculate_cost_of_equity(self) -> float:
         assumptions = self.assumptions
