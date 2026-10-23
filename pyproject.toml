@@ -1,7 +1,7 @@
 [project]
 name = "dcf-calculator"
 version = "0.1.0"
-description = "Python tool to parse 10-Ks, project free cash flows, and run DCF models."
+description = "Python tool to fetch SEC EDGAR 10-K financials, project free cash flows, and run DCF valuations."
 readme = "README.md"
 authors = [
     { name = "Vivek Kumar", email = "vkumar01825@gmail.com" }
