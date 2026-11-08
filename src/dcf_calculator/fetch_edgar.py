@@ -147,14 +147,19 @@ def get_balance_sheet(facts: EntityFacts, fiscal_year: int) -> dict[str, float]:
     }
 
 
-def get_financials(
+def get_annual_financials(
     ticker: str, fiscal_year: int
 ) -> tuple[dict[str, float], dict[str, float], dict[str, float]]:
-    company = Company(ticker)
-    facts = company.get_facts()
 
-    income_statement = get_income_statement(facts, fiscal_year)
-    cash_flow_statement = get_cash_flow_statement(facts, fiscal_year)
-    balance_sheet = get_balance_sheet(facts, fiscal_year)
+    try:
+        company = Company(ticker)
+        facts = company.get_facts()
 
-    return income_statement, cash_flow_statement, balance_sheet
+        income_statement = get_income_statement(facts, fiscal_year)
+        cash_flow_statement = get_cash_flow_statement(facts, fiscal_year)
+        balance_sheet = get_balance_sheet(facts, fiscal_year)
+
+        return income_statement, cash_flow_statement, balance_sheet
+
+    except Exception:
+        return None
