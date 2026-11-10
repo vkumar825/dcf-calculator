@@ -77,13 +77,16 @@ class DiscountedCashFlow(BaseModel):
         income_statement = self.get_latest_financials().income_statement
         cash_flow_statement = self.get_latest_financials().cash_flow_statement
 
-        cfo = cash_flow_statement.operating_cash_flow
+        operating_income = income_statement.operating_income
         capex = abs(cash_flow_statement.capex)
+        depr_amort = cash_flow_statement.depr_amort
+        delta_nwc = cash_flow_statement.delta_nwc
         effective_tax_rate = self.calculate_effective_tax_rate()
-        interest_expense = income_statement.interest_expense
 
-        # Deriving Unlevered Free Cash Flow from Cash Flow from Operations
-        ufcf = cfo - capex + (interest_expense * (1 - effective_tax_rate))
+        nopat = operating_income * (1 - effective_tax_rate)
+
+        # Deriving Unlevered Free Cash Flow from Operating Income (EBIT)
+        ufcf = nopat + depr_amort - capex - delta_nwc
 
         return ufcf
 
