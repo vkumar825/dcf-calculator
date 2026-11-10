@@ -12,6 +12,7 @@ dependencies = [
     "pydantic>=2.14.1",
     "python-dotenv>=1.2.4",
     "streamlit>=1.67.0",
+    "watchdog>=7.1.0",
 ]
 
 [tool.uv]
