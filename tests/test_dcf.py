@@ -10,6 +10,8 @@ def financials():
             ticker="AAPL",
             fiscal_year="2025",  # Verify Pydantic string -> int coercion
             income_statement={
+                "revenue": 416_161_000_000,
+                "operating_income": 133_050_000_000,
                 "interest_expense": 3_933_000_000,
                 "income_tax_expense": 20_719_000_000,
                 "pre_tax_income": 132_729_000_000,
@@ -18,6 +20,8 @@ def financials():
             cash_flow_statement={
                 "operating_cash_flow": 111_482_000_000,
                 "capex": 12_715_000_000,
+                "depr_amort": 11_698_000_000,
+                "delta_nwc": 0.0,
             },
             balance_sheet={
                 "cash_equiv": 35_934_000_000,
@@ -32,7 +36,6 @@ def financials():
 
 @pytest.fixture
 def assumptions():
-
     return ValuationAssumptions(
         current_stock_price=235,
         risk_free_rate=4,
@@ -91,8 +94,18 @@ def test_calculate_wacc(dcf):
     assert dcf.calculate_wacc() == pytest.approx(0.0931, abs=1e-4)
 
 
-def test_calculate_base_ufcf(dcf):
-    assert dcf.calculate_base_ufcf() == pytest.approx(102086058608.14, abs=1e-2)
+def test_calculate_base_ufcf(dcf, financials):
+    # Baseline with D&A added back and delta_nwc = 0.0
+    assert dcf.calculate_base_ufcf() == pytest.approx(111263891892.45, abs=1e-2)
+
+    # Edge-case: Non-zero positive delta_nwc reduces free cash flow
+    financials[0].cash_flow_statement.delta_nwc = 2_000_000_000
+    assert dcf.calculate_base_ufcf() == pytest.approx(109263891892.45, abs=1e-2)
+
+    # Edge-case: Zero D&A fallback (when EDGAR cannot find D&A)
+    financials[0].cash_flow_statement.delta_nwc = 0.0
+    financials[0].cash_flow_statement.depr_amort = 0.0
+    assert dcf.calculate_base_ufcf() == pytest.approx(99565891892.45, abs=1e-2)
 
 
 def test_project_cash_flows(dcf):
