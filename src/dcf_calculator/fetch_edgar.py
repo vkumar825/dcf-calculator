@@ -19,7 +19,21 @@ FIELD_ALIASES = {
         "PaymentsToAcquireProductiveAssets",
         "PaymentsToAcquirePropertyPlantAndEquipmentAndIntangibleAssets",
     ],
+    "depr_amort": [
+        "DepreciationDepletionAndAmortization",
+        "DepreciationAndAmortization",
+        "Depreciation",
+    ],
     # Income Statement
+    "revenue": [
+        "RevenueFromContractWithCustomerExcludingAssessedTax",
+        "Revenues",
+        "SalesRevenueNet",
+        "RevenueFromContractWithCustomerIncludingAssessedTax",
+    ],
+    "operating_income": [
+        "OperatingIncomeLoss",
+    ],
     "income_tax_expense": [
         "IncomeTaxExpenseBenefit",
         "CurrentIncomeTaxExpenseBenefit",
@@ -99,6 +113,10 @@ def _extract_metric(
 
 def get_income_statement(facts: EntityFacts, fiscal_year: int) -> dict[str, float]:
     return {
+        "revenue": _extract_metric(facts, FIELD_ALIASES["revenue"], fiscal_year),
+        "operating_income": _extract_metric(
+            facts, FIELD_ALIASES["operating_income"], fiscal_year
+        ),
         "interest_expense": _extract_metric(
             facts, FIELD_ALIASES["interest_expense"], fiscal_year, default=0.0
         ),
@@ -120,6 +138,9 @@ def get_cash_flow_statement(facts: EntityFacts, fiscal_year: int) -> dict[str, f
             facts, FIELD_ALIASES["operating_cash_flow"], fiscal_year
         ),
         "capex": _extract_metric(facts, FIELD_ALIASES["capex"], fiscal_year),
+        "depr_amort": _extract_metric(
+            facts, FIELD_ALIASES["depr_amort"], fiscal_year, default=0.0
+        ),
     }
 
 
