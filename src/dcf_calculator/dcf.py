@@ -165,17 +165,14 @@ class DiscountedCashFlow(BaseModel):
         return schedule
 
     def project_cash_flows(self) -> list[float]:
-        assumptions = self.assumptions
-
-        base_ufcf = self.calculate_base_ufcf()
-        revenue_growth_rate = assumptions.expected_growth_rate
-        fiscal_horizon = assumptions.fiscal_horizon
+        schedules = self.generate_projection_schedule()
 
         projected_cash_flows = []
 
-        for t in range(1, fiscal_horizon + 1):
-            projected_ufcf = base_ufcf * (1 + revenue_growth_rate) ** t
-            projected_cash_flows.append(projected_ufcf)
+        for schedule in schedules:
+            # Exclude Year 0 for downstream calculations
+            if schedule.get("Year") != 0:
+                projected_cash_flows.append(schedule.get("Free Cash Flow"))
 
         return projected_cash_flows
 
