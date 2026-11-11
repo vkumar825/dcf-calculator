@@ -1,3 +1,5 @@
+from typing import Any
+
 from pydantic import BaseModel
 
 from dcf_calculator.dcf_schemas import AnnualFinancials, ValuationAssumptions
@@ -77,28 +79,100 @@ class DiscountedCashFlow(BaseModel):
         income_statement = self.get_latest_financials().income_statement
         cash_flow_statement = self.get_latest_financials().cash_flow_statement
 
-        cfo = cash_flow_statement.operating_cash_flow
+        operating_income = income_statement.operating_income
         capex = abs(cash_flow_statement.capex)
+        depr_amort = cash_flow_statement.depr_amort
+        delta_nwc = cash_flow_statement.delta_nwc
         effective_tax_rate = self.calculate_effective_tax_rate()
-        interest_expense = income_statement.interest_expense
 
-        # Deriving Unlevered Free Cash Flow from Cash Flow from Operations
-        ufcf = cfo - capex + (interest_expense * (1 - effective_tax_rate))
+        nopat = operating_income * (1 - effective_tax_rate)
+
+        # Deriving Unlevered Free Cash Flow from Operating Income (EBIT)
+        ufcf = nopat + depr_amort - capex - delta_nwc
 
         return ufcf
 
-    def project_cash_flows(self) -> list[float]:
+    def generate_projection_schedule(self) -> list[dict[str, Any]]:
+        income_statement = self.get_latest_financials().income_statement
+        cash_flow_statement = self.get_latest_financials().cash_flow_statement
         assumptions = self.assumptions
 
-        base_ufcf = self.calculate_base_ufcf()
-        revenue_growth_rate = assumptions.expected_growth_rate
+        schedule = []
+
+        wacc = self.calculate_wacc()
+        effective_tax_rate = self.calculate_effective_tax_rate()
+        expected_growth_rate = assumptions.expected_growth_rate
         fiscal_horizon = assumptions.fiscal_horizon
+
+        # defining the starting base year 0 values
+        revenue = income_statement.revenue
+        operating_income = income_statement.operating_income
+        nopat = operating_income * (1 - effective_tax_rate)
+        depr_amort = cash_flow_statement.depr_amort
+        capex = abs(cash_flow_statement.capex)
+        ufcf = self.calculate_base_ufcf()
+
+        for t in range(fiscal_horizon + 1):
+            if t == 0:
+                base_discount_factor = 1 / (1 + wacc) ** 0
+                schedule.append(
+                    {
+                        "Year": 0,
+                        "Revenue": revenue,
+                        "Operating Income": operating_income,
+                        "Net Operating Profit After Tax": nopat,
+                        "Depreciation & Amortization": depr_amort,
+                        "Capital Expenditures": capex,
+                        "Free Cash Flow": ufcf,
+                        "Discount Factor": base_discount_factor,
+                        "Present Value": base_discount_factor * ufcf,
+                    }
+                )
+
+                # skip to next iteration, year 1
+                continue
+
+            projected_revenue = revenue * (1 + expected_growth_rate)
+            projected_operating_income = operating_income * (1 + expected_growth_rate)
+            projected_nopat = nopat * (1 + expected_growth_rate)
+            projected_depr_amort = depr_amort * (1 + expected_growth_rate)
+            projected_capex = capex * (1 + expected_growth_rate)
+            projected_ufcf = ufcf * (1 + expected_growth_rate)
+            projected_discount_factor = 1 / (1 + wacc) ** t
+
+            schedule.append(
+                {
+                    "Year": t,
+                    "Revenue": projected_revenue,
+                    "Operating Income": projected_operating_income,
+                    "Net Operating Profit After Tax": projected_nopat,
+                    "Depreciation & Amortization": projected_depr_amort,
+                    "Capital Expenditures": projected_capex,
+                    "Free Cash Flow": projected_ufcf,
+                    "Discount Factor": projected_discount_factor,
+                    "Present Value": projected_discount_factor * projected_ufcf,
+                }
+            )
+
+            # Reset variables to calculate for the subsequent years
+            revenue = projected_revenue
+            operating_income = projected_operating_income
+            nopat = projected_nopat
+            depr_amort = projected_depr_amort
+            capex = projected_capex
+            ufcf = nopat + depr_amort - capex
+
+        return schedule
+
+    def project_cash_flows(self) -> list[float]:
+        schedules = self.generate_projection_schedule()
 
         projected_cash_flows = []
 
-        for t in range(1, fiscal_horizon + 1):
-            projected_ufcf = base_ufcf * (1 + revenue_growth_rate) ** t
-            projected_cash_flows.append(projected_ufcf)
+        for schedule in schedules:
+            # Exclude Year 0 for downstream calculations
+            if schedule.get("Year") != 0:
+                projected_cash_flows.append(schedule.get("Free Cash Flow"))
 
         return projected_cash_flows
 
@@ -165,14 +239,14 @@ class DiscountedCashFlow(BaseModel):
 
         return implied_share_price
 
-    def run_valuation(self) -> dict[str, float | list[float]]:
+    def run_valuation(self) -> dict[str, Any]:
         return {
             "effective_tax_rate": self.calculate_effective_tax_rate(),
             "cost_of_equity": self.calculate_cost_of_equity(),
             "pre_tax_cost_of_debt": self.calculate_pre_tax_cost_debt(),
             "wacc": self.calculate_wacc(),
             "base_ufcf": self.calculate_base_ufcf(),
-            "projected_cash_flows": self.project_cash_flows(),
+            "projection_schedule": self.generate_projection_schedule(),
             "terminal_value": self.calculate_terminal_value(),
             "enterprise_value": self.calculate_enterprise_value(),
             "equity_value": self.calculate_equity_value(),

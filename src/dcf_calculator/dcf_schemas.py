@@ -5,12 +5,16 @@ class IncomeStatement(BaseModel):
     """Core financial metrics from the income statement.
 
     Attributes:
+        revenue: Top-line amount of money before expenses
+        operating_income: Earnings before interest and taxes.
         interest_expense: Interest expense on debt obligations.
         income_tax_expense: Total income taxes.
         pre_tax_income: Earnings before taxes.
         shares_outstanding: Diluted shares outstanding.
     """
 
+    revenue: float
+    operating_income: float
     interest_expense: float = 0.0
     income_tax_expense: float
     pre_tax_income: float
@@ -23,10 +27,14 @@ class CashFlowStatement(BaseModel):
     Attributes:
         operating_cash_flow: Net cash provided by operating activities (CFO).
         capex: Capital expenditures.
+        depr_amort: Depreciation and amortization expenses.
+        delta_nwc: Change in net working capital.
     """
 
     operating_cash_flow: float
     capex: float
+    depr_amort: float = 0.0
+    delta_nwc: float = 0.0
 
 
 class BalanceSheet(BaseModel):
