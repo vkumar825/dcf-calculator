@@ -239,14 +239,14 @@ class DiscountedCashFlow(BaseModel):
 
         return implied_share_price
 
-    def run_valuation(self) -> dict[str, float | list[float]]:
+    def run_valuation(self) -> dict[str, Any]:
         return {
             "effective_tax_rate": self.calculate_effective_tax_rate(),
             "cost_of_equity": self.calculate_cost_of_equity(),
             "pre_tax_cost_of_debt": self.calculate_pre_tax_cost_debt(),
             "wacc": self.calculate_wacc(),
             "base_ufcf": self.calculate_base_ufcf(),
-            "projected_cash_flows": self.project_cash_flows(),
+            "projection_schedule": self.generate_projection_schedule(),
             "terminal_value": self.calculate_terminal_value(),
             "enterprise_value": self.calculate_enterprise_value(),
             "equity_value": self.calculate_equity_value(),
