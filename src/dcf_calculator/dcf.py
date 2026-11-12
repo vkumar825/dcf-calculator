@@ -41,11 +41,15 @@ class DiscountedCashFlow(BaseModel):
 
         return cost_of_equity
 
-    def calculate_pre_tax_cost_debt(self) -> float:
+    def calculate_pre_tax_cost_of_debt(self) -> float:
         balance_sheet = self.get_latest_financials().balance_sheet
         income_statement = self.get_latest_financials().income_statement
+        assumptions = self.assumptions
 
         if balance_sheet.total_debt > 0:
+            if income_statement.interest_expense == 0.0:
+                # Fallback to estimating investment-grade borrowing cost
+                return assumptions.risk_free_rate + 0.015
             return income_statement.interest_expense / balance_sheet.total_debt
 
         return 0.0
@@ -56,22 +60,21 @@ class DiscountedCashFlow(BaseModel):
         balance_sheet = self.get_latest_financials().balance_sheet
 
         current_stock_price = assumptions.current_stock_price
-        cost_of_debt = self.calculate_pre_tax_cost_debt()
+        effective_tax_rate = self.calculate_effective_tax_rate()
+        pre_tax_cost_of_debt = self.calculate_pre_tax_cost_of_debt()
+        after_tax_cost_of_debt = pre_tax_cost_of_debt * (1 - effective_tax_rate)
         outstanding_shares = income_statement.shares_outstanding
         total_debt = balance_sheet.total_debt
 
-        effective_tax_rate = self.calculate_effective_tax_rate()
         cost_of_equity = self.calculate_cost_of_equity()
 
         market_capitalization = current_stock_price * outstanding_shares
-        total_value_of_capital = market_capitalization + total_debt
-        equity_weight = market_capitalization / total_value_of_capital
-        debt_weight = total_debt / total_value_of_capital
+        total_capitalization = market_capitalization + total_debt
+        equity_weight = market_capitalization / total_capitalization
+        debt_weight = total_debt / total_capitalization
 
         # Using Weighted Average Cost of Capital formula to calculate discount rate
-        wacc = (equity_weight * cost_of_equity) + (
-            debt_weight * cost_of_debt * (1 - effective_tax_rate)
-        )
+        wacc = (equity_weight * cost_of_equity) + (debt_weight * after_tax_cost_of_debt)
 
         return wacc
 
@@ -243,7 +246,7 @@ class DiscountedCashFlow(BaseModel):
         return {
             "effective_tax_rate": self.calculate_effective_tax_rate(),
             "cost_of_equity": self.calculate_cost_of_equity(),
-            "pre_tax_cost_of_debt": self.calculate_pre_tax_cost_debt(),
+            "pre_tax_cost_of_debt": self.calculate_pre_tax_cost_of_debt(),
             "wacc": self.calculate_wacc(),
             "base_ufcf": self.calculate_base_ufcf(),
             "projection_schedule": self.generate_projection_schedule(),

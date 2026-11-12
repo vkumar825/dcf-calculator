@@ -12,7 +12,7 @@ def financials():
             income_statement={
                 "revenue": 416_161_000_000,
                 "operating_income": 133_050_000_000,
-                "interest_expense": 3_933_000_000,
+                "interest_expense": 0.0,
                 "income_tax_expense": 20_719_000_000,
                 "pre_tax_income": 132_729_000_000,
                 "shares_outstanding": 15_004_697_000,
@@ -81,17 +81,27 @@ def test_calculate_cost_of_equity(dcf):
     assert dcf.calculate_cost_of_equity() == pytest.approx(0.0946, abs=1e-4)
 
 
-def test_calculate_pre_tax_cost_debt(dcf, financials):
-    assert dcf.calculate_pre_tax_cost_debt() == pytest.approx(0.0434, abs=1e-4)
+def test_calculate_pre_tax_cost_of_debt(dcf, financials):
+    # Fallback case: interest_expense == 0.0 estimates borrowing cost at risk_free_rate + 1.5% (4% + 1.5% = 5.5%)
+    assert dcf.calculate_pre_tax_cost_of_debt() == pytest.approx(0.055)
+
+    # Standard case: when interest_expense > 0, calculates interest_expense / total_debt
+    financials[0].income_statement.interest_expense = 3_933_000_000
+    assert dcf.calculate_pre_tax_cost_of_debt() == pytest.approx(0.0434, abs=1e-4)
 
     # Zero debt case returns 0.0
     financials[0].balance_sheet.short_term_debt = 0.0
     financials[0].balance_sheet.long_term_debt = 0.0
-    assert dcf.calculate_pre_tax_cost_debt() == 0.0
+    assert dcf.calculate_pre_tax_cost_of_debt() == 0.0
+
+    # Reset for other tests
+    financials[0].income_statement.interest_expense = 0.0
+    financials[0].balance_sheet.short_term_debt = 12_350_000_000
+    financials[0].balance_sheet.long_term_debt = 78_328_000_000
 
 
 def test_calculate_wacc(dcf):
-    assert dcf.calculate_wacc() == pytest.approx(0.0931, abs=1e-4)
+    assert dcf.calculate_wacc() == pytest.approx(0.0934, abs=1e-4)
 
 
 def test_calculate_base_ufcf(dcf, financials):
@@ -129,8 +139,8 @@ def test_generate_projection_schedule(dcf):
     assert y1["Revenue"] == pytest.approx(441130660000.0, abs=1e-2)
     assert y1["Operating Income"] == pytest.approx(141033000000.0, abs=1e-2)
     assert y1["Free Cash Flow"] == pytest.approx(117939725406.05, abs=1e-2)
-    assert y1["Discount Factor"] == pytest.approx(0.9148, abs=1e-4)
-    assert y1["Present Value"] == pytest.approx(107893080507.13, abs=1e-2)
+    assert y1["Discount Factor"] == pytest.approx(0.9146, abs=1e-4)
+    assert y1["Present Value"] == pytest.approx(107868805570.52, abs=1e-2)
 
     # Verify Year 10 (Final Projected Year)
     y10 = schedule[10]
@@ -138,8 +148,8 @@ def test_generate_projection_schedule(dcf):
     assert y10["Revenue"] == pytest.approx(745280968240.97, abs=1e-2)
     assert y10["Operating Income"] == pytest.approx(238272286025.03, abs=1e-2)
     assert y10["Free Cash Flow"] == pytest.approx(199256684504.08, abs=1e-2)
-    assert y10["Discount Factor"] == pytest.approx(0.4105, abs=1e-4)
-    assert y10["Present Value"] == pytest.approx(81798945862.46, abs=1e-2)
+    assert y10["Discount Factor"] == pytest.approx(0.4096, abs=1e-4)
+    assert y10["Present Value"] == pytest.approx(81615092086.03, abs=1e-2)
 
     # Verify all expected column keys exist in each row
     expected_keys = {
@@ -176,14 +186,14 @@ def test_project_cash_flows(dcf):
 
 
 def test_calculate_terminal_value(dcf):
-    assert dcf.calculate_terminal_value() == pytest.approx(2998356892632.25, abs=1e-2)
+    assert dcf.calculate_terminal_value() == pytest.approx(2987567597947.72, abs=1e-2)
 
     # Invalid perpetual growth rate (wacc <= g) raises ValueError
     dcf.assumptions.perpetual_growth_rate = 0.15
     wacc = dcf.calculate_wacc()
     g = dcf.assumptions.perpetual_growth_rate
 
-    assert wacc == pytest.approx(0.0931, abs=1e-4)
+    assert wacc == pytest.approx(0.0934, abs=1e-4)
     assert g == pytest.approx(0.15)
     assert not (wacc > g)
 
@@ -194,15 +204,15 @@ def test_calculate_terminal_value(dcf):
 
 
 def test_calculate_enterprise_value(dcf):
-    assert dcf.calculate_enterprise_value() == pytest.approx(2174002152988.15, abs=1e-2)
+    assert dcf.calculate_enterprise_value() == pytest.approx(2165703743828.87, abs=1e-2)
 
 
 def test_calculate_equity_value(dcf):
-    assert dcf.calculate_equity_value() == pytest.approx(2215744152988.15, abs=1e-2)
+    assert dcf.calculate_equity_value() == pytest.approx(2207445743828.87, abs=1e-2)
 
 
 def test_calculate_implied_share_price(dcf):
-    assert dcf.calculate_implied_share_price() == pytest.approx(147.67, abs=1e-2)
+    assert dcf.calculate_implied_share_price() == pytest.approx(147.12, abs=1e-2)
 
 
 def test_run_valuation(dcf):
@@ -210,13 +220,13 @@ def test_run_valuation(dcf):
 
     assert result["effective_tax_rate"] == pytest.approx(0.1561, abs=1e-4)
     assert result["cost_of_equity"] == pytest.approx(0.0946, abs=1e-4)
-    assert result["pre_tax_cost_of_debt"] == pytest.approx(0.0434, abs=1e-4)
-    assert result["wacc"] == pytest.approx(0.0931, abs=1e-4)
+    assert result["pre_tax_cost_of_debt"] == pytest.approx(0.055, abs=1e-4)
+    assert result["wacc"] == pytest.approx(0.0934, abs=1e-4)
     assert result["base_ufcf"] == pytest.approx(111263891892.50, abs=1e-2)
     assert len(result["projection_schedule"]) == 11
     assert result["projection_schedule"][0]["Year"] == 0
     assert result["projection_schedule"][-1]["Year"] == 10
-    assert result["terminal_value"] == pytest.approx(2998356892632.25, abs=1e-2)
-    assert result["enterprise_value"] == pytest.approx(2174002152988.15, abs=1e-2)
-    assert result["equity_value"] == pytest.approx(2215744152988.15, abs=1e-2)
-    assert result["implied_share_price"] == pytest.approx(147.67, abs=1e-2)
+    assert result["terminal_value"] == pytest.approx(2987567597947.72, abs=1e-2)
+    assert result["enterprise_value"] == pytest.approx(2165703743828.87, abs=1e-2)
+    assert result["equity_value"] == pytest.approx(2207445743828.87, abs=1e-2)
+    assert result["implied_share_price"] == pytest.approx(147.12, abs=1e-2)
