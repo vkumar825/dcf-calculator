@@ -1,4 +1,5 @@
 import os
+from typing import Any
 import warnings
 from dotenv import load_dotenv
 from edgar import Company, set_identity
@@ -106,10 +107,6 @@ def _extract_metric(
     if default is not None:
         return default
 
-    raise ValueError(
-        f"Could not find any of tags {aliases} for fiscal year {fiscal_year}"
-    )
-
 
 def get_income_statement(facts: EntityFacts, fiscal_year: int) -> dict[str, float]:
     return {
@@ -168,19 +165,25 @@ def get_balance_sheet(facts: EntityFacts, fiscal_year: int) -> dict[str, float]:
     }
 
 
-def get_annual_financials(
-    ticker: str, fiscal_year: int
-) -> tuple[dict[str, float], dict[str, float], dict[str, float]]:
+def get_annual_financials(ticker: str, fiscal_year: int) -> dict[str, Any]:
 
-    try:
-        company = Company(ticker)
-        facts = company.get_facts()
+    company = Company(ticker)
+    facts = company.get_facts()
+    financials = {}
 
+    if facts is not None:
         income_statement = get_income_statement(facts, fiscal_year)
         cash_flow_statement = get_cash_flow_statement(facts, fiscal_year)
         balance_sheet = get_balance_sheet(facts, fiscal_year)
 
-        return income_statement, cash_flow_statement, balance_sheet
+        financials["company_name"] = company.name
+        financials["cik"] = str(company.cik).zfill(10)
+        financials["income_statement"] = income_statement
+        financials["cash_flow_statement"] = cash_flow_statement
+        financials["balance_sheet"] = balance_sheet
 
-    except Exception:
-        return None
+        return financials
+    else:
+        raise ValueError(
+            f"Could not retrieve information for {ticker}. Please try a different company."
+        )
