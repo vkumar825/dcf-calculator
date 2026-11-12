@@ -1,6 +1,9 @@
+from typing import Any
 from edgar import CompanyNotFoundError
 import streamlit as st
 import pandas as pd
+from dcf_calculator.dcf import DiscountedCashFlow
+from dcf_calculator.dcf_schemas import AnnualFinancials, ValuationAssumptions
 from dcf_calculator.fetch_edgar import get_annual_financials
 
 
@@ -25,7 +28,44 @@ def display_company_overview(ticker: str, fiscal_year: int):
     )
     col4.metric("Long-Term Debt", f"${balance_sheet['long_term_debt'] / 1e9:,.1f}B")
 
-    return income_statement, cash_flow_statement, balance_sheet
+    return financials
+
+
+def display_cost_of_capital(
+    valuations: dict[str, Any],
+    assumptions: dict[str, Any],
+    financials: dict[str, Any],
+):
+
+    income_statement = financials["income_statement"]
+    balance_sheet = financials["balance_sheet"]
+    total_debt = balance_sheet["short_term_debt"] + balance_sheet["long_term_debt"]
+
+    pre_tax_cost_of_debt = valuations["pre_tax_cost_of_debt"]
+    effective_tax_rate = valuations["effective_tax_rate"]
+
+    current_stock_price = assumptions["current_stock_price"]
+    outstanding_shares = income_statement["shares_outstanding"]
+    market_capitalization = current_stock_price * outstanding_shares
+    total_capitalization = market_capitalization + total_debt
+
+    cost_of_equity = valuations["cost_of_equity"]
+
+    st.subheader("Cost of Capital", anchor=False)
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Market Cap", f"${market_capitalization / 1e12:,.1f}T", border=True)
+    col2.metric("Total Debt", f"${total_debt / 1e9:,.1f}B", border=True)
+    col3.metric("Total Capital", f"${total_capitalization / 1e12:,.1f}T", border=True)
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Cost of Equity", f"{cost_of_equity * 100:,.1f}%", border=True)
+    col2.metric(
+        "Pre-Tax Cost of Debt", f"{pre_tax_cost_of_debt * 100:,.1f}%", border=True
+    )
+    col3.metric("Effective Tax Rate", f"{effective_tax_rate * 100:,.1f}%", border=True)
+
+    st.info(f"Weighted Average Cost of Capital (WACC): **{valuations['wacc']:.1%}**")
 
 
 def main():
@@ -62,8 +102,43 @@ def main():
 
     if submitted:
         try:
-            income_statement, cash_flow_statement, balance_sheet = (
-                display_company_overview(ticker=ticker, fiscal_year=fiscal_year)
+            financials = display_company_overview(
+                ticker=ticker, fiscal_year=fiscal_year
+            )
+
+            income_statement = financials["income_statement"]
+            cash_flow_statement = financials["cash_flow_statement"]
+            balance_sheet = financials["balance_sheet"]
+
+            assumptions_input = {
+                "current_stock_price": current_stock_price,
+                "risk_free_rate": risk_free_rate,
+                "beta": beta,
+                "market_risk_premium": market_risk_premium,
+                "expected_growth_rate": expected_growth_rate,
+                "perpetual_growth_rate": perpetual_growth_rate,
+                "fiscal_horizon": fiscal_horizon,
+            }
+
+            dcf = DiscountedCashFlow(
+                financials=[
+                    AnnualFinancials(
+                        ticker=ticker,
+                        fiscal_year=fiscal_year,
+                        income_statement=income_statement,
+                        cash_flow_statement=cash_flow_statement,
+                        balance_sheet=balance_sheet,
+                    )
+                ],
+                assumptions=ValuationAssumptions(**assumptions_input),
+            )
+
+            valuations = dcf.run_valuation()
+
+            display_cost_of_capital(
+                valuations=valuations,
+                assumptions=assumptions_input,
+                financials=financials,
             )
 
         except CompanyNotFoundError:
