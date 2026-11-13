@@ -1,3 +1,4 @@
+from datetime import datetime
 import os
 from typing import Any
 import warnings
@@ -19,6 +20,10 @@ FIELD_ALIASES = {
         "PaymentsToAcquirePropertyPlantAndEquipment",
         "PaymentsToAcquireProductiveAssets",
         "PaymentsToAcquirePropertyPlantAndEquipmentAndIntangibleAssets",
+        "PaymentsToAcquireOtherPropertyPlantAndEquipment",
+        "PaymentsForPropertyPlantAndEquipment",
+        "PaymentsToAcquireOtherProductiveAssets",
+        "AdditionsToPropertyPlantAndEquipment",
     ],
     "depr_amort": [
         "DepreciationDepletionAndAmortization",
@@ -95,17 +100,15 @@ FIELD_ALIASES = {
 
 def _extract_metric(
     facts, aliases: list[str], fiscal_year: int, default: float | None = None
-) -> float:
+) -> float | None:
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=UserWarning)
         for tag in aliases:
             fact = facts.get_annual_fact(tag, fiscal_year=fiscal_year)
-
             if fact is not None and fact.numeric_value is not None:
                 return float(fact.numeric_value)
 
-    if default is not None:
-        return default
+    return default
 
 
 def get_income_statement(facts: EntityFacts, fiscal_year: int) -> dict[str, float]:
@@ -166,24 +169,37 @@ def get_balance_sheet(facts: EntityFacts, fiscal_year: int) -> dict[str, float]:
 
 
 def get_annual_financials(ticker: str, fiscal_year: int) -> dict[str, Any]:
-
     company = Company(ticker)
     facts = company.get_facts()
-    financials = {}
 
-    if facts is not None:
-        income_statement = get_income_statement(facts, fiscal_year)
-        cash_flow_statement = get_cash_flow_statement(facts, fiscal_year)
-        balance_sheet = get_balance_sheet(facts, fiscal_year)
-
-        financials["company_name"] = company.name
-        financials["cik"] = str(company.cik).zfill(10)
-        financials["income_statement"] = income_statement
-        financials["cash_flow_statement"] = cash_flow_statement
-        financials["balance_sheet"] = balance_sheet
-
-        return financials
-    else:
+    if facts is None:
         raise ValueError(
             f"Could not retrieve information for {ticker}. Please try a different company."
         )
+
+    income_statement = get_income_statement(facts, fiscal_year)
+    cash_flow_statement = get_cash_flow_statement(facts, fiscal_year)
+    balance_sheet = get_balance_sheet(facts, fiscal_year)
+
+    # Check if financial data was filed / available for the requested fiscal year
+    if (
+        income_statement.get("revenue") is None
+        or cash_flow_statement.get("operating_cash_flow") is None
+    ):
+        raise ValueError(
+            f"Could not retrieve financial data for {ticker} in FY{fiscal_year}. "
+            f"The 10-K filing for this year may not be available yet."
+        )
+
+    fiscal_year_end = ""
+    if company.fiscal_year_end:
+        fiscal_year_end = f"{datetime.strptime(company.fiscal_year_end, '%m%d').strftime('%B %d')}, {fiscal_year}"
+
+    return {
+        "company_name": company.name,
+        "cik": str(company.cik).zfill(10),
+        "fiscal_year_end": fiscal_year_end,
+        "income_statement": income_statement,
+        "cash_flow_statement": cash_flow_statement,
+        "balance_sheet": balance_sheet,
+    }
