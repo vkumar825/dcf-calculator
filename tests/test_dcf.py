@@ -126,42 +126,42 @@ def test_generate_projection_schedule(dcf):
 
     # Verify Year 0 (Historical Base)
     y0 = schedule[0]
-    assert y0["Year"] == 0
-    assert y0["Revenue"] == 416_161_000_000
-    assert y0["Operating Income"] == 133_050_000_000
-    assert y0["Free Cash Flow"] == pytest.approx(111263891892.50, abs=1e-2)
-    assert y0["Discount Factor"] == 1.0
-    assert y0["Present Value"] == pytest.approx(111263891892.50, abs=1e-2)
+    assert y0["year"] == 0
+    assert y0["revenue"] == 416_161_000_000
+    assert y0["operating_income"] == 133_050_000_000
+    assert y0["ufcf"] == pytest.approx(111263891892.50, abs=1e-2)
+    assert y0["discount_factor"] == 1.0
+    assert y0["present_value"] == pytest.approx(111263891892.50, abs=1e-2)
 
     # Verify Year 1 (First Projected Year at 6% growth)
     y1 = schedule[1]
-    assert y1["Year"] == 1
-    assert y1["Revenue"] == pytest.approx(441130660000.0, abs=1e-2)
-    assert y1["Operating Income"] == pytest.approx(141033000000.0, abs=1e-2)
-    assert y1["Free Cash Flow"] == pytest.approx(117939725406.05, abs=1e-2)
-    assert y1["Discount Factor"] == pytest.approx(0.9146, abs=1e-4)
-    assert y1["Present Value"] == pytest.approx(107868805570.52, abs=1e-2)
+    assert y1["year"] == 1
+    assert y1["revenue"] == pytest.approx(441130660000.0, abs=1e-2)
+    assert y1["operating_income"] == pytest.approx(141033000000.0, abs=1e-2)
+    assert y1["ufcf"] == pytest.approx(117939725406.05, abs=1e-2)
+    assert y1["discount_factor"] == pytest.approx(0.9146, abs=1e-4)
+    assert y1["present_value"] == pytest.approx(107868805570.52, abs=1e-2)
 
     # Verify Year 10 (Final Projected Year)
     y10 = schedule[10]
-    assert y10["Year"] == 10
-    assert y10["Revenue"] == pytest.approx(745280968240.97, abs=1e-2)
-    assert y10["Operating Income"] == pytest.approx(238272286025.03, abs=1e-2)
-    assert y10["Free Cash Flow"] == pytest.approx(199256684504.08, abs=1e-2)
-    assert y10["Discount Factor"] == pytest.approx(0.4096, abs=1e-4)
-    assert y10["Present Value"] == pytest.approx(81615092086.03, abs=1e-2)
+    assert y10["year"] == 10
+    assert y10["revenue"] == pytest.approx(745280968240.97, abs=1e-2)
+    assert y10["operating_income"] == pytest.approx(238272286025.03, abs=1e-2)
+    assert y10["ufcf"] == pytest.approx(199256684504.08, abs=1e-2)
+    assert y10["discount_factor"] == pytest.approx(0.4096, abs=1e-4)
+    assert y10["present_value"] == pytest.approx(81615092086.03, abs=1e-2)
 
     # Verify all expected column keys exist in each row
     expected_keys = {
-        "Year",
-        "Revenue",
-        "Operating Income",
-        "Net Operating Profit After Tax",
-        "Depreciation & Amortization",
-        "Capital Expenditures",
-        "Free Cash Flow",
-        "Discount Factor",
-        "Present Value",
+        "year",
+        "revenue",
+        "operating_income",
+        "nopat",
+        "depr_amort",
+        "capex",
+        "ufcf",
+        "discount_factor",
+        "present_value",
     }
     for row in schedule:
         assert set(row.keys()) == expected_keys
@@ -224,8 +224,8 @@ def test_run_valuation(dcf):
     assert result["wacc"] == pytest.approx(0.0934, abs=1e-4)
     assert result["base_ufcf"] == pytest.approx(111263891892.50, abs=1e-2)
     assert len(result["projection_schedule"]) == 11
-    assert result["projection_schedule"][0]["Year"] == 0
-    assert result["projection_schedule"][-1]["Year"] == 10
+    assert result["projection_schedule"][0]["year"] == 0
+    assert result["projection_schedule"][-1]["year"] == 10
     assert result["terminal_value"] == pytest.approx(2987567597947.72, abs=1e-2)
     assert result["enterprise_value"] == pytest.approx(2165703743828.87, abs=1e-2)
     assert result["equity_value"] == pytest.approx(2207445743828.87, abs=1e-2)

@@ -120,15 +120,15 @@ class DiscountedCashFlow(BaseModel):
                 base_discount_factor = 1 / (1 + wacc) ** 0
                 schedule.append(
                     {
-                        "Year": 0,
-                        "Revenue": revenue,
-                        "Operating Income": operating_income,
-                        "Net Operating Profit After Tax": nopat,
-                        "Depreciation & Amortization": depr_amort,
-                        "Capital Expenditures": capex,
-                        "Free Cash Flow": ufcf,
-                        "Discount Factor": base_discount_factor,
-                        "Present Value": base_discount_factor * ufcf,
+                        "year": 0,
+                        "revenue": revenue,
+                        "operating_income": operating_income,
+                        "nopat": nopat,
+                        "depr_amort": depr_amort,
+                        "capex": capex,
+                        "ufcf": ufcf,
+                        "discount_factor": base_discount_factor,
+                        "present_value": base_discount_factor * ufcf,
                     }
                 )
 
@@ -145,15 +145,15 @@ class DiscountedCashFlow(BaseModel):
 
             schedule.append(
                 {
-                    "Year": t,
-                    "Revenue": projected_revenue,
-                    "Operating Income": projected_operating_income,
-                    "Net Operating Profit After Tax": projected_nopat,
-                    "Depreciation & Amortization": projected_depr_amort,
-                    "Capital Expenditures": projected_capex,
-                    "Free Cash Flow": projected_ufcf,
-                    "Discount Factor": projected_discount_factor,
-                    "Present Value": projected_discount_factor * projected_ufcf,
+                    "year": t,
+                    "revenue": projected_revenue,
+                    "operating_income": projected_operating_income,
+                    "nopat": projected_nopat,
+                    "depr_amort": projected_depr_amort,
+                    "capex": projected_capex,
+                    "ufcf": projected_ufcf,
+                    "discount_factor": projected_discount_factor,
+                    "present_value": projected_discount_factor * projected_ufcf,
                 }
             )
 
@@ -174,8 +174,8 @@ class DiscountedCashFlow(BaseModel):
 
         for schedule in schedules:
             # Exclude Year 0 for downstream calculations
-            if schedule.get("Year") != 0:
-                projected_cash_flows.append(schedule.get("Free Cash Flow"))
+            if schedule.get("year") != 0:
+                projected_cash_flows.append(schedule.get("ufcf"))
 
         return projected_cash_flows
 
