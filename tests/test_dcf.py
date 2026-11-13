@@ -37,7 +37,7 @@ def financials():
 @pytest.fixture
 def assumptions():
     return ValuationAssumptions(
-        current_stock_price=235,
+        current_share_price=235,
         risk_free_rate=4,
         beta=1.07,
         market_risk_premium=5.1,

@@ -59,7 +59,7 @@ class DiscountedCashFlow(BaseModel):
         income_statement = self.get_latest_financials().income_statement
         balance_sheet = self.get_latest_financials().balance_sheet
 
-        current_stock_price = assumptions.current_stock_price
+        current_share_price = assumptions.current_share_price
         effective_tax_rate = self.calculate_effective_tax_rate()
         pre_tax_cost_of_debt = self.calculate_pre_tax_cost_of_debt()
         after_tax_cost_of_debt = pre_tax_cost_of_debt * (1 - effective_tax_rate)
@@ -68,7 +68,7 @@ class DiscountedCashFlow(BaseModel):
 
         cost_of_equity = self.calculate_cost_of_equity()
 
-        market_capitalization = current_stock_price * outstanding_shares
+        market_capitalization = current_share_price * outstanding_shares
         total_capitalization = market_capitalization + total_debt
         equity_weight = market_capitalization / total_capitalization
         debt_weight = total_debt / total_capitalization

@@ -85,7 +85,7 @@ class ValuationAssumptions(BaseModel):
     """User-provided assumptions for DCF valuation and WACC.
 
     Attributes:
-        current_stock_price: Current share price.
+        current_share_price: Current share price.
         risk_free_rate: Risk-free rate of return.
         beta: Stock beta (volatility relative to market).
         market_risk_premium: Expected market return above risk-free rate.
@@ -94,7 +94,7 @@ class ValuationAssumptions(BaseModel):
         fiscal_horizon: Forecast horizon in years.
     """
 
-    current_stock_price: float
+    current_share_price: float
     risk_free_rate: float
     beta: float
     market_risk_premium: float
