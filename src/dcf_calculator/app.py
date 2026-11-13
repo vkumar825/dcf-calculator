@@ -9,12 +9,12 @@ from dcf_calculator.dcf_schemas import AnnualFinancials, ValuationAssumptions
 from dcf_calculator.fetch_edgar import get_annual_financials
 
 
-def format_currency(val: float, projection: bool = False) -> str:
+def format_currency(val: float, projection: bool = False, currency: bool = True) -> str:
     if val is None:
         return "N/A"
 
     sign = "-" if val < 0 else ""
-    dollar_prefix = "$"
+    dollar_prefix = "$" if currency else ""
     abs_val = abs(val)
 
     if projection:
@@ -22,13 +22,20 @@ def format_currency(val: float, projection: bool = False) -> str:
         return f"{sign}{num_str}"
 
     if abs_val >= 1e12:
-        return f"{sign}{dollar_prefix}{abs_val / 1e12:,.2f}T"
+        val_str = f"{abs_val / 1e12:,.2f}"
+        if "." in val_str:
+            val_str = val_str.rstrip("0").rstrip(".")
+        return f"{sign}{dollar_prefix}{val_str}T"
     elif abs_val >= 1e9:
-        return f"{sign}{dollar_prefix}{abs_val / 1e9:,.1f}B"
+        val_str = f"{abs_val / 1e9:,.1f}".removesuffix(".0")
+        return f"{sign}{dollar_prefix}{val_str}B"
     elif abs_val >= 1e6:
-        return f"{sign}{dollar_prefix}{abs_val / 1e6:,.1f}M"
+        val_str = f"{abs_val / 1e6:,.1f}".removesuffix(".0")
+        return f"{sign}{dollar_prefix}{val_str}M"
+    elif abs_val == 0:
+        return f"{dollar_prefix}0"
     else:
-        return f"{sign}{dollar_prefix}{abs_val:,.0f}"
+        return f"{sign}{dollar_prefix}{abs_val:,.2f}"
 
 
 def display_company_overview(ticker: str, fiscal_year: int, financials: dict[str, Any]):
@@ -72,9 +79,9 @@ def display_cost_of_capital(
     pre_tax_cost_of_debt = valuations["pre_tax_cost_of_debt"]
     effective_tax_rate = valuations["effective_tax_rate"]
 
-    current_stock_price = assumptions["current_stock_price"]
+    current_share_price = assumptions["current_share_price"]
     outstanding_shares = income_statement["shares_outstanding"]
-    market_capitalization = current_stock_price * outstanding_shares
+    market_capitalization = current_share_price * outstanding_shares
     total_capitalization = market_capitalization + total_debt
 
     cost_of_equity = valuations["cost_of_equity"]
@@ -131,11 +138,101 @@ def display_projection_schedule(
     st.divider()
 
 
+def display_valuation_summary(
+    valuations: dict[str, Any],
+    projection_schedules: list[dict[str, Any]],
+    financials: dict[str, Any],
+    current_share_price: float,
+):
+    st.subheader("Valuation Summary", anchor=False)
+
+    present_values = [
+        schedule["present_value"]
+        for schedule in projection_schedules
+        if schedule["year"] != 0
+    ]
+    sum_of_present_values = sum(present_values)
+    n = len(present_values)
+    pv_of_terminal_value = valuations["terminal_value"] / (
+        (1 + valuations["wacc"]) ** n
+    )
+
+    income_statement = financials["income_statement"]
+    shares_outstanding = income_statement.get("shares_outstanding")
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric(
+        f"PV of {n}-Year Free Cash Flow",
+        format_currency(sum_of_present_values),
+        border=True,
+    )
+    col2.metric(
+        "Terminal Value", format_currency(valuations["terminal_value"]), border=True
+    )
+    col3.metric(
+        "PV of Terminal Value", format_currency(pv_of_terminal_value), border=True
+    )
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric(
+        "Enterprise Value", format_currency(valuations["enterprise_value"]), border=True
+    )
+    col2.metric(
+        "Equity Value", format_currency(valuations["equity_value"]), border=True
+    )
+    col3.metric(
+        "Diluted Shares Outstanding",
+        format_currency(shares_outstanding, currency=False),
+        border=True,
+    )
+
+    upside = (
+        valuations["implied_share_price"] - current_share_price
+    ) / current_share_price
+
+    _, col1, col2, _ = st.columns([0.5, 1, 1, 0.5])
+
+    col1.metric(
+        "Current Share Price",
+        format_currency(current_share_price),
+        delta="Market Price",
+        delta_color="violet",
+        delta_arrow="off",
+        border=True,
+    )
+
+    arrow_str = "off"
+
+    if upside >= 0.20:
+        signal = "Buy"
+        delta_color = "normal"
+        arrow_str = "up"
+    elif upside < -0.10:
+        signal = "Sell"
+        delta_color = "normal"
+        arrow_str = "down"
+    else:
+        signal = "Hold"
+        delta_color = "yellow"
+
+    col2.metric(
+        "Implied Share Price",
+        format_currency(valuations["implied_share_price"]),
+        delta=f"{upside:+.1%} ({signal})",
+        delta_color=delta_color,
+        delta_arrow=arrow_str,
+        border=True,
+    )
+
+    st.divider()
+
+
 def main():
     st.title("Discounted Cash Flow Calculator", anchor=False)
     st.markdown(
-        "Pull SEC 10-K filings (**2009+**), model WACC and free cash flows, estimate instrinsic value, and implied share price.\n\n"
-        "View source on [GitHub](https://github.com/vkumar825/dcf-calculator)."
+        "Pulls SEC 10-K filings **(2009+)** to calculate WACC, "
+        "project free cash flows, and estimate implied share price. "
+        "[View source on GitHub](https://github.com/vkumar825/dcf-calculator)."
     )
     with st.form("dcf_form", enter_to_submit=False):
         col1, col2 = st.columns(2)
@@ -151,8 +248,13 @@ def main():
         )
 
         col1, col2, col3 = st.columns(3)
-        current_stock_price = col1.number_input(
-            "Current Stock Price ($)", value=235.0, step=1.0, format="%g", required=True
+        current_share_price = col1.number_input(
+            "Current Share Price ($)",
+            min_value=1.0,
+            value=235.0,
+            step=1.0,
+            format="%g",
+            required=True,
         )
         risk_free_rate = col2.number_input(
             "Risk-free Rate (%)", value=4.0, step=0.25, format="%g", required=True
@@ -195,7 +297,7 @@ def main():
             balance_sheet = financials["balance_sheet"]
 
             assumptions_input = {
-                "current_stock_price": current_stock_price,
+                "current_share_price": current_share_price,
                 "risk_free_rate": risk_free_rate,
                 "beta": beta,
                 "market_risk_premium": market_risk_premium,
@@ -232,6 +334,13 @@ def main():
             display_projection_schedule(
                 projection_schedules=valuations["projection_schedule"],
                 fiscal_year=fiscal_year,
+            )
+
+            display_valuation_summary(
+                valuations=valuations,
+                projection_schedules=valuations["projection_schedule"],
+                financials=financials,
+                current_share_price=assumptions_input["current_share_price"],
             )
 
         except CompanyNotFoundError:
