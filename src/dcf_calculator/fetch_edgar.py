@@ -111,8 +111,33 @@ def _extract_metric(
     return default
 
 
+def _derive_operating_income(facts: EntityFacts, fiscal_year: int) -> float | None:
+    operating_profit_aliases = [
+        "OperatingProfitLoss",
+    ]
+    gross_profit_aliases = [
+        "GrossProfit",
+    ]
+    sga_aliases = [
+        "SellingGeneralAndAdministrativeExpense",
+        "OperatingExpenses",
+    ]
+
+    op_profit = _extract_metric(facts, operating_profit_aliases, fiscal_year)
+    if op_profit is not None:
+        return op_profit
+
+    gross_profit = _extract_metric(facts, gross_profit_aliases, fiscal_year)
+    sga = _extract_metric(facts, sga_aliases, fiscal_year)
+
+    if gross_profit is not None and sga is not None:
+        return gross_profit - sga
+
+    return None
+
+
 def get_income_statement(facts: EntityFacts, fiscal_year: int) -> dict[str, float]:
-    return {
+    income_statement = {
         "revenue": _extract_metric(facts, FIELD_ALIASES["revenue"], fiscal_year),
         "operating_income": _extract_metric(
             facts, FIELD_ALIASES["operating_income"], fiscal_year
@@ -130,6 +155,13 @@ def get_income_statement(facts: EntityFacts, fiscal_year: int) -> dict[str, floa
             facts, FIELD_ALIASES["shares_outstanding"], fiscal_year
         ),
     }
+
+    if income_statement["operating_income"] is None:
+        income_statement["operating_income"] = _derive_operating_income(
+            facts, fiscal_year
+        )
+
+    return income_statement
 
 
 def get_cash_flow_statement(facts: EntityFacts, fiscal_year: int) -> dict[str, float]:
