@@ -4,6 +4,8 @@ DCF Calculator is an automated Discounted Cash Flow valuation tool built with Py
 
 It fetches historical financial statement data from SEC EDGAR 10-K filings (2009+) using [edgartools](https://github.com/dgunning/edgartools), models WACC and unlevered free cash flows, and estimates a company's intrinsic value and implied share price.
 
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://vkumar-dcf.streamlit.app/)
+
 ## Prerequisites
 
 - Python `>=3.13`
