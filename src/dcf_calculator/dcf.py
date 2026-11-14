@@ -41,11 +41,15 @@ class DiscountedCashFlow(BaseModel):
 
         return cost_of_equity
 
-    def calculate_pre_tax_cost_debt(self) -> float:
+    def calculate_pre_tax_cost_of_debt(self) -> float:
         balance_sheet = self.get_latest_financials().balance_sheet
         income_statement = self.get_latest_financials().income_statement
+        assumptions = self.assumptions
 
         if balance_sheet.total_debt > 0:
+            if income_statement.interest_expense == 0.0:
+                # Fallback to estimating investment-grade borrowing cost
+                return assumptions.risk_free_rate + 0.015
             return income_statement.interest_expense / balance_sheet.total_debt
 
         return 0.0
@@ -55,23 +59,22 @@ class DiscountedCashFlow(BaseModel):
         income_statement = self.get_latest_financials().income_statement
         balance_sheet = self.get_latest_financials().balance_sheet
 
-        current_stock_price = assumptions.current_stock_price
-        cost_of_debt = self.calculate_pre_tax_cost_debt()
+        current_share_price = assumptions.current_share_price
+        effective_tax_rate = self.calculate_effective_tax_rate()
+        pre_tax_cost_of_debt = self.calculate_pre_tax_cost_of_debt()
+        after_tax_cost_of_debt = pre_tax_cost_of_debt * (1 - effective_tax_rate)
         outstanding_shares = income_statement.shares_outstanding
         total_debt = balance_sheet.total_debt
 
-        effective_tax_rate = self.calculate_effective_tax_rate()
         cost_of_equity = self.calculate_cost_of_equity()
 
-        market_capitalization = current_stock_price * outstanding_shares
-        total_value_of_capital = market_capitalization + total_debt
-        equity_weight = market_capitalization / total_value_of_capital
-        debt_weight = total_debt / total_value_of_capital
+        market_capitalization = current_share_price * outstanding_shares
+        total_capitalization = market_capitalization + total_debt
+        equity_weight = market_capitalization / total_capitalization
+        debt_weight = total_debt / total_capitalization
 
         # Using Weighted Average Cost of Capital formula to calculate discount rate
-        wacc = (equity_weight * cost_of_equity) + (
-            debt_weight * cost_of_debt * (1 - effective_tax_rate)
-        )
+        wacc = (equity_weight * cost_of_equity) + (debt_weight * after_tax_cost_of_debt)
 
         return wacc
 
@@ -117,15 +120,15 @@ class DiscountedCashFlow(BaseModel):
                 base_discount_factor = 1 / (1 + wacc) ** 0
                 schedule.append(
                     {
-                        "Year": 0,
-                        "Revenue": revenue,
-                        "Operating Income": operating_income,
-                        "Net Operating Profit After Tax": nopat,
-                        "Depreciation & Amortization": depr_amort,
-                        "Capital Expenditures": capex,
-                        "Free Cash Flow": ufcf,
-                        "Discount Factor": base_discount_factor,
-                        "Present Value": base_discount_factor * ufcf,
+                        "year": 0,
+                        "revenue": revenue,
+                        "operating_income": operating_income,
+                        "nopat": nopat,
+                        "depr_amort": depr_amort,
+                        "capex": capex,
+                        "ufcf": ufcf,
+                        "discount_factor": base_discount_factor,
+                        "present_value": base_discount_factor * ufcf,
                     }
                 )
 
@@ -142,15 +145,15 @@ class DiscountedCashFlow(BaseModel):
 
             schedule.append(
                 {
-                    "Year": t,
-                    "Revenue": projected_revenue,
-                    "Operating Income": projected_operating_income,
-                    "Net Operating Profit After Tax": projected_nopat,
-                    "Depreciation & Amortization": projected_depr_amort,
-                    "Capital Expenditures": projected_capex,
-                    "Free Cash Flow": projected_ufcf,
-                    "Discount Factor": projected_discount_factor,
-                    "Present Value": projected_discount_factor * projected_ufcf,
+                    "year": t,
+                    "revenue": projected_revenue,
+                    "operating_income": projected_operating_income,
+                    "nopat": projected_nopat,
+                    "depr_amort": projected_depr_amort,
+                    "capex": projected_capex,
+                    "ufcf": projected_ufcf,
+                    "discount_factor": projected_discount_factor,
+                    "present_value": projected_discount_factor * projected_ufcf,
                 }
             )
 
@@ -171,8 +174,8 @@ class DiscountedCashFlow(BaseModel):
 
         for schedule in schedules:
             # Exclude Year 0 for downstream calculations
-            if schedule.get("Year") != 0:
-                projected_cash_flows.append(schedule.get("Free Cash Flow"))
+            if schedule.get("year") != 0:
+                projected_cash_flows.append(schedule.get("ufcf"))
 
         return projected_cash_flows
 
@@ -190,25 +193,27 @@ class DiscountedCashFlow(BaseModel):
 
         return terminal_value
 
-    def calculate_enterprise_value(self) -> float:
+    def calculate_present_values(self) -> list[float]:
         projected_cash_flows = self.project_cash_flows()
         wacc = self.calculate_wacc()
+        return [
+            ufcf / ((1 + wacc) ** t)
+            for t, ufcf in enumerate(projected_cash_flows, start=1)
+        ]
+
+    def calculate_pv_of_fcf(self) -> float:
+        return sum(self.calculate_present_values())
+
+    def calculate_pv_of_terminal_value(self) -> float:
         terminal_value = self.calculate_terminal_value()
-        n = len(projected_cash_flows)  # represents the final year
+        wacc = self.calculate_wacc()
+        n = len(self.project_cash_flows())
+        return terminal_value / ((1 + wacc) ** n)
 
-        present_values = []
-
-        for t, ufcf in enumerate(projected_cash_flows, start=1):
-            pv = ufcf / ((1 + wacc) ** t)
-            present_values.append(pv)
-
-        sum_of_present_values = sum(present_values)
-
-        pv_of_terminal_value = terminal_value / ((1 + wacc) ** n)
-
-        enterprise_value = sum_of_present_values + pv_of_terminal_value
-
-        return enterprise_value
+    def calculate_enterprise_value(self) -> float:
+        pv_of_fcf = self.calculate_pv_of_fcf()
+        pv_of_terminal_value = self.calculate_pv_of_terminal_value()
+        return pv_of_fcf + pv_of_terminal_value
 
     def calculate_equity_value(self) -> float:
         balance_sheet = self.get_latest_financials().balance_sheet
@@ -243,11 +248,14 @@ class DiscountedCashFlow(BaseModel):
         return {
             "effective_tax_rate": self.calculate_effective_tax_rate(),
             "cost_of_equity": self.calculate_cost_of_equity(),
-            "pre_tax_cost_of_debt": self.calculate_pre_tax_cost_debt(),
+            "pre_tax_cost_of_debt": self.calculate_pre_tax_cost_of_debt(),
             "wacc": self.calculate_wacc(),
             "base_ufcf": self.calculate_base_ufcf(),
             "projection_schedule": self.generate_projection_schedule(),
+            "present_values": self.calculate_present_values(),
+            "pv_of_fcf": self.calculate_pv_of_fcf(),
             "terminal_value": self.calculate_terminal_value(),
+            "pv_of_terminal_value": self.calculate_pv_of_terminal_value(),
             "enterprise_value": self.calculate_enterprise_value(),
             "equity_value": self.calculate_equity_value(),
             "implied_share_price": self.calculate_implied_share_price(),

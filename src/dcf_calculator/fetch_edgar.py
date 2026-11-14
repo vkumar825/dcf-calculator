@@ -1,4 +1,6 @@
+from datetime import datetime
 import os
+from typing import Any
 import warnings
 from dotenv import load_dotenv
 from edgar import Company, set_identity
@@ -18,6 +20,10 @@ FIELD_ALIASES = {
         "PaymentsToAcquirePropertyPlantAndEquipment",
         "PaymentsToAcquireProductiveAssets",
         "PaymentsToAcquirePropertyPlantAndEquipmentAndIntangibleAssets",
+        "PaymentsToAcquireOtherPropertyPlantAndEquipment",
+        "PaymentsForPropertyPlantAndEquipment",
+        "PaymentsToAcquireOtherProductiveAssets",
+        "AdditionsToPropertyPlantAndEquipment",
     ],
     "depr_amort": [
         "DepreciationDepletionAndAmortization",
@@ -94,25 +100,44 @@ FIELD_ALIASES = {
 
 def _extract_metric(
     facts, aliases: list[str], fiscal_year: int, default: float | None = None
-) -> float:
+) -> float | None:
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=UserWarning)
         for tag in aliases:
             fact = facts.get_annual_fact(tag, fiscal_year=fiscal_year)
-
             if fact is not None and fact.numeric_value is not None:
                 return float(fact.numeric_value)
 
-    if default is not None:
-        return default
+    return default
 
-    raise ValueError(
-        f"Could not find any of tags {aliases} for fiscal year {fiscal_year}"
-    )
+
+def _derive_operating_income(facts: EntityFacts, fiscal_year: int) -> float | None:
+    operating_profit_aliases = [
+        "OperatingProfitLoss",
+    ]
+    gross_profit_aliases = [
+        "GrossProfit",
+    ]
+    sga_aliases = [
+        "SellingGeneralAndAdministrativeExpense",
+        "OperatingExpenses",
+    ]
+
+    op_profit = _extract_metric(facts, operating_profit_aliases, fiscal_year)
+    if op_profit is not None:
+        return op_profit
+
+    gross_profit = _extract_metric(facts, gross_profit_aliases, fiscal_year)
+    sga = _extract_metric(facts, sga_aliases, fiscal_year)
+
+    if gross_profit is not None and sga is not None:
+        return gross_profit - sga
+
+    return None
 
 
 def get_income_statement(facts: EntityFacts, fiscal_year: int) -> dict[str, float]:
-    return {
+    income_statement = {
         "revenue": _extract_metric(facts, FIELD_ALIASES["revenue"], fiscal_year),
         "operating_income": _extract_metric(
             facts, FIELD_ALIASES["operating_income"], fiscal_year
@@ -130,6 +155,13 @@ def get_income_statement(facts: EntityFacts, fiscal_year: int) -> dict[str, floa
             facts, FIELD_ALIASES["shares_outstanding"], fiscal_year
         ),
     }
+
+    if income_statement["operating_income"] is None:
+        income_statement["operating_income"] = _derive_operating_income(
+            facts, fiscal_year
+        )
+
+    return income_statement
 
 
 def get_cash_flow_statement(facts: EntityFacts, fiscal_year: int) -> dict[str, float]:
@@ -168,19 +200,38 @@ def get_balance_sheet(facts: EntityFacts, fiscal_year: int) -> dict[str, float]:
     }
 
 
-def get_annual_financials(
-    ticker: str, fiscal_year: int
-) -> tuple[dict[str, float], dict[str, float], dict[str, float]]:
+def get_annual_financials(ticker: str, fiscal_year: int) -> dict[str, Any]:
+    company = Company(ticker)
+    facts = company.get_facts()
 
-    try:
-        company = Company(ticker)
-        facts = company.get_facts()
+    if facts is None:
+        raise ValueError(
+            f"Could not retrieve information for {ticker}. Please try a different company."
+        )
 
-        income_statement = get_income_statement(facts, fiscal_year)
-        cash_flow_statement = get_cash_flow_statement(facts, fiscal_year)
-        balance_sheet = get_balance_sheet(facts, fiscal_year)
+    income_statement = get_income_statement(facts, fiscal_year)
+    cash_flow_statement = get_cash_flow_statement(facts, fiscal_year)
+    balance_sheet = get_balance_sheet(facts, fiscal_year)
 
-        return income_statement, cash_flow_statement, balance_sheet
+    # Check if financial data was filed / available for the requested fiscal year
+    if (
+        income_statement.get("revenue") is None
+        or cash_flow_statement.get("operating_cash_flow") is None
+    ):
+        raise ValueError(
+            f"Could not retrieve financial data for {ticker} in FY{fiscal_year}. "
+            f"The 10-K filing for this year may not be available yet."
+        )
 
-    except Exception:
-        return None
+    fiscal_year_end = ""
+    if company.fiscal_year_end:
+        fiscal_year_end = f"{datetime.strptime(company.fiscal_year_end, '%m%d').strftime('%B %d')}, {fiscal_year}"
+
+    return {
+        "company_name": company.name,
+        "cik": str(company.cik).zfill(10),
+        "fiscal_year_end": fiscal_year_end,
+        "income_statement": income_statement,
+        "cash_flow_statement": cash_flow_statement,
+        "balance_sheet": balance_sheet,
+    }
