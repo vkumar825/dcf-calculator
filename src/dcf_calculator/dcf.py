@@ -193,25 +193,27 @@ class DiscountedCashFlow(BaseModel):
 
         return terminal_value
 
-    def calculate_enterprise_value(self) -> float:
+    def calculate_present_values(self) -> list[float]:
         projected_cash_flows = self.project_cash_flows()
         wacc = self.calculate_wacc()
+        return [
+            ufcf / ((1 + wacc) ** t)
+            for t, ufcf in enumerate(projected_cash_flows, start=1)
+        ]
+
+    def calculate_pv_of_fcf(self) -> float:
+        return sum(self.calculate_present_values())
+
+    def calculate_pv_of_terminal_value(self) -> float:
         terminal_value = self.calculate_terminal_value()
-        n = len(projected_cash_flows)  # represents the final year
+        wacc = self.calculate_wacc()
+        n = len(self.project_cash_flows())
+        return terminal_value / ((1 + wacc) ** n)
 
-        present_values = []
-
-        for t, ufcf in enumerate(projected_cash_flows, start=1):
-            pv = ufcf / ((1 + wacc) ** t)
-            present_values.append(pv)
-
-        sum_of_present_values = sum(present_values)
-
-        pv_of_terminal_value = terminal_value / ((1 + wacc) ** n)
-
-        enterprise_value = sum_of_present_values + pv_of_terminal_value
-
-        return enterprise_value
+    def calculate_enterprise_value(self) -> float:
+        pv_of_fcf = self.calculate_pv_of_fcf()
+        pv_of_terminal_value = self.calculate_pv_of_terminal_value()
+        return pv_of_fcf + pv_of_terminal_value
 
     def calculate_equity_value(self) -> float:
         balance_sheet = self.get_latest_financials().balance_sheet
@@ -250,7 +252,10 @@ class DiscountedCashFlow(BaseModel):
             "wacc": self.calculate_wacc(),
             "base_ufcf": self.calculate_base_ufcf(),
             "projection_schedule": self.generate_projection_schedule(),
+            "present_values": self.calculate_present_values(),
+            "pv_of_fcf": self.calculate_pv_of_fcf(),
             "terminal_value": self.calculate_terminal_value(),
+            "pv_of_terminal_value": self.calculate_pv_of_terminal_value(),
             "enterprise_value": self.calculate_enterprise_value(),
             "equity_value": self.calculate_equity_value(),
             "implied_share_price": self.calculate_implied_share_price(),

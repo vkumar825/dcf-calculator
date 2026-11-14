@@ -203,6 +203,22 @@ def test_calculate_terminal_value(dcf):
         dcf.calculate_terminal_value()
 
 
+def test_calculate_present_values(dcf):
+    present_values = dcf.calculate_present_values()
+    assert len(present_values) == 10
+    assert sum(present_values) == pytest.approx(942002741141.87, abs=1e-2)
+
+
+def test_calculate_pv_of_fcf(dcf):
+    assert dcf.calculate_pv_of_fcf() == pytest.approx(942002741141.87, abs=1e-2)
+
+
+def test_calculate_pv_of_terminal_value(dcf):
+    assert dcf.calculate_pv_of_terminal_value() == pytest.approx(
+        1223701002686.9995, abs=1e-2
+    )
+
+
 def test_calculate_enterprise_value(dcf):
     assert dcf.calculate_enterprise_value() == pytest.approx(2165703743828.87, abs=1e-2)
 
@@ -226,7 +242,10 @@ def test_run_valuation(dcf):
     assert len(result["projection_schedule"]) == 11
     assert result["projection_schedule"][0]["year"] == 0
     assert result["projection_schedule"][-1]["year"] == 10
+    assert len(result["present_values"]) == 10
+    assert result["pv_of_fcf"] == pytest.approx(942002741141.87, abs=1e-2)
     assert result["terminal_value"] == pytest.approx(2987567597947.72, abs=1e-2)
+    assert result["pv_of_terminal_value"] == pytest.approx(1223701002686.9995, abs=1e-2)
     assert result["enterprise_value"] == pytest.approx(2165703743828.87, abs=1e-2)
     assert result["equity_value"] == pytest.approx(2207445743828.87, abs=1e-2)
     assert result["implied_share_price"] == pytest.approx(147.12, abs=1e-2)
