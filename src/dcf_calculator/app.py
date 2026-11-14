@@ -4,6 +4,7 @@ from edgar import CompanyNotFoundError
 from pydantic import ValidationError
 import streamlit as st
 import pandas as pd
+import plotly.graph_objects as go
 from dcf_calculator.dcf import DiscountedCashFlow
 from dcf_calculator.dcf_schemas import AnnualFinancials, ValuationAssumptions
 from dcf_calculator.fetch_edgar import get_annual_financials
@@ -44,7 +45,7 @@ def display_company_overview(ticker: str, fiscal_year: int, financials: dict[str
     balance_sheet = financials["balance_sheet"]
 
     fy_end = (
-        f" · {financials['fiscal_year_end']}"
+        f" (Ended {financials['fiscal_year_end']})"
         if financials.get("fiscal_year_end")
         else ""
     )
@@ -140,37 +141,28 @@ def display_projection_schedule(
 
 def display_valuation_summary(
     valuations: dict[str, Any],
-    projection_schedules: list[dict[str, Any]],
     financials: dict[str, Any],
     current_share_price: float,
 ):
     st.subheader("Valuation Summary", anchor=False)
 
-    present_values = [
-        schedule["present_value"]
-        for schedule in projection_schedules
-        if schedule["year"] != 0
-    ]
-    sum_of_present_values = sum(present_values)
-    n = len(present_values)
-    pv_of_terminal_value = valuations["terminal_value"] / (
-        (1 + valuations["wacc"]) ** n
-    )
-
     income_statement = financials["income_statement"]
     shares_outstanding = income_statement.get("shares_outstanding")
+    n = len(valuations["present_values"])
 
     col1, col2, col3 = st.columns(3)
     col1.metric(
         f"PV of {n}-Year Free Cash Flow",
-        format_currency(sum_of_present_values),
+        format_currency(valuations["pv_of_fcf"]),
         border=True,
     )
     col2.metric(
         "Terminal Value", format_currency(valuations["terminal_value"]), border=True
     )
     col3.metric(
-        "PV of Terminal Value", format_currency(pv_of_terminal_value), border=True
+        "PV of Terminal Value",
+        format_currency(valuations["pv_of_terminal_value"]),
+        border=True,
     )
 
     col1, col2, col3 = st.columns(3)
@@ -203,6 +195,10 @@ def display_valuation_summary(
 
     arrow_str = "off"
 
+    # Margin of Safety thresholds:
+    # Buy:  >= +20% (undervalued with buffer)
+    # Sell: < -10%  (overvalued)
+    # Hold: -10% to +20% (fair value range)
     if upside >= 0.20:
         signal = "Buy"
         delta_color = "normal"
@@ -225,6 +221,81 @@ def display_valuation_summary(
     )
 
     st.divider()
+
+
+def display_valuation_bridge_chart(
+    valuations: dict[str, Any],
+    financials: dict[str, Any],
+):
+    st.subheader(
+        "Valuation Bridge: PV of Cash Flows to Equity Value",
+        anchor=False,
+    )
+
+    balance_sheet = financials["balance_sheet"]
+    total_debt = balance_sheet["short_term_debt"] + balance_sheet["long_term_debt"]
+    total_cash_and_securities = (
+        balance_sheet["cash_equiv"]
+        + balance_sheet["short_term_investments"]
+        + balance_sheet["long_term_investments"]
+    )
+
+    # Normalize the units to USD billions
+    pv_of_fcf_b = valuations["pv_of_fcf"] / 1e9
+    pv_of_terminal_value_b = valuations["pv_of_terminal_value"] / 1e9
+    total_cash_b = total_cash_and_securities / 1e9
+    total_debt_b = -total_debt / 1e9
+    equity_value_b = valuations["equity_value"] / 1e9
+
+    x_labels = [
+        "PV of Cash Flows",
+        "PV of Terminal Value",
+        "Cash & Marketable Securities",
+        "Total Debt",
+        "Equity Value",
+    ]
+    measures = ["relative", "relative", "relative", "relative", "total"]
+    y_values = [
+        pv_of_fcf_b,
+        pv_of_terminal_value_b,
+        total_cash_b,
+        total_debt_b,
+        equity_value_b,
+    ]
+    text_labels = [
+        f"${pv_of_fcf_b:,.1f}B",
+        f"${pv_of_terminal_value_b:,.1f}B",
+        f"+${total_cash_b:,.1f}B",
+        f"-${abs(total_debt_b):,.1f}B",
+        f"${equity_value_b:,.1f}B",
+    ]
+
+    fig = go.Figure(
+        go.Waterfall(
+            name="Valuation Bridge",
+            orientation="v",
+            measure=measures,
+            x=x_labels,
+            textposition="outside",
+            text=text_labels,
+            y=y_values,
+            connector={"line": {"color": "rgb(63, 63, 63)"}},
+        )
+    )
+
+    fig.update_layout(
+        yaxis_title="USD (Billions)",
+        showlegend=False,
+        waterfallgap=0.25,
+        margin=dict(l=20, r=20, t=30, b=20),
+    )
+
+    st.plotly_chart(fig, width="stretch")
+
+
+@st.cache_data(show_spinner="Fetching financial statements from SEC EDGAR...")
+def load_financials(ticker: str, fiscal_year: int) -> dict[str, Any]:
+    return get_annual_financials(ticker=ticker, fiscal_year=fiscal_year)
 
 
 def main():
@@ -251,25 +322,25 @@ def main():
         current_share_price = col1.number_input(
             "Current Share Price ($)",
             min_value=1.0,
-            value=235.0,
+            value=230.0,
             step=1.0,
             format="%g",
             required=True,
         )
         risk_free_rate = col2.number_input(
-            "Risk-free Rate (%)", value=4.0, step=0.25, format="%g", required=True
+            "Risk-free Rate (%)", value=4.25, step=0.25, format="%g", required=True
         )
         beta = col3.number_input(
-            "Beta", value=1.07, step=0.25, format="%g", required=True
+            "Beta", value=1.25, step=0.25, format="%g", required=True
         )
 
         col1, col2, col3 = st.columns(3)
         market_risk_premium = col1.number_input(
-            "Market Risk Premium (%)", value=5.10, step=0.25, format="%g", required=True
+            "Market Risk Premium (%)", value=5.0, step=0.25, format="%g", required=True
         )
         expected_growth_rate = col2.number_input(
             "Expected Growth Rate (%)",
-            value=6.0,
+            value=8.0,
             step=0.25,
             format="%g",
             required=True,
@@ -290,7 +361,7 @@ def main():
 
     if submitted:
         try:
-            financials = get_annual_financials(ticker=ticker, fiscal_year=fiscal_year)
+            financials = load_financials(ticker=ticker, fiscal_year=fiscal_year)
 
             income_statement = financials["income_statement"]
             cash_flow_statement = financials["cash_flow_statement"]
@@ -338,9 +409,13 @@ def main():
 
             display_valuation_summary(
                 valuations=valuations,
-                projection_schedules=valuations["projection_schedule"],
                 financials=financials,
                 current_share_price=assumptions_input["current_share_price"],
+            )
+
+            display_valuation_bridge_chart(
+                valuations=valuations,
+                financials=financials,
             )
 
         except CompanyNotFoundError:
